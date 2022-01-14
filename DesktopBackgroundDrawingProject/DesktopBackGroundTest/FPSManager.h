@@ -1,25 +1,31 @@
 #pragma once
 
+class Timer;
+class Counter;
+
 class FPSManager {
 public:
-	FPSManager(int fps = 60);
+	FPSManager(int fps = 60, int fpsCtrlTiming = 10);
 	~FPSManager();
 
-	void start();
+	void init();
 	void update();
 
 	int getRealFPS()const;
 
-	__event void updateRealFPS(double);
-
 private:
 	void InitCurrentFrame();
-	long long GetCurrentTimeMillisecond()const;
-	bool IsOverOneSecond()const;
 	void UpdateRealFPS();
-	void WaitMillisecond();
+	long long GetMillisecondPerFrame(int frame)const;
+	void SleepMillisecond(long long dt_millisecond);
+	void CallSleepMillisecond(long long dt_millisecond);
+	bool IsLimitFrameOver()const;
 
 private:
-	int m_currentFrame, m_fps_limit, m_fps_real;
-	long long m_startTime;
+	int m_currentFrame;
+	int m_fps_limit;
+	int m_fps_real;
+	long long m_sum_dt_millisecond;
+	Timer* m_pTimer;
+	Counter* m_pFrameCounter;
 };

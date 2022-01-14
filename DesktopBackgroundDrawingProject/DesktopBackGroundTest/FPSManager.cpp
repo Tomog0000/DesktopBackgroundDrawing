@@ -1,46 +1,71 @@
 #include "FPSManager.h"
 #include <chrono>
 #include <thread>
-#include <iostream>
-FPSManager::FPSManager(int fps):
+#include "Timer.h"
+#include "Counter.h"
+#include <Windows.h>
+#include <utility>
+#include <stdexcept>
+
+FPSManager::FPSManager(int fps, int fpsCtrlTiming) :
 	m_currentFrame(0),
 	m_fps_limit(fps),
 	m_fps_real(-1),
-	m_startTime()
+	m_sum_dt_millisecond(0),
+	m_pTimer(nullptr),
+	m_pFrameCounter(nullptr)
 {
-	start();
+	m_pTimer = new Timer();
+	m_pFrameCounter = new Counter(fpsCtrlTiming);
+
+	if (fpsCtrlTiming > fps) {
+		throw std::invalid_argument("FPSManager constractor argument error.");
+	}
+
+	init();
 }
 
 FPSManager::~FPSManager()
-{}
-
-void FPSManager::start()
 {
-	m_startTime = GetCurrentTimeMillisecond();
+	delete m_pTimer;
+	delete m_pFrameCounter;
+}
+
+void FPSManager::init()
+{
 	InitCurrentFrame();
+	m_pTimer->start();
 }
 
 void FPSManager::update()
 {
 	m_currentFrame++;
+	m_pFrameCounter->countUp();
 
-	if (m_currentFrame >= m_fps_limit) {
-		//既定のフレーム数処理が完了した場合
+	long long oneFrame_dt_millisecond = m_pTimer->update();
 
-		WaitMillisecond();
+	m_sum_dt_millisecond += oneFrame_dt_millisecond;
+
+	if (m_pFrameCounter->isCountMax()) {
+		CallSleepMillisecond(m_sum_dt_millisecond);
+	}
+	else {
+		if (IsLimitFrameOver()) {
+			CallSleepMillisecond(m_sum_dt_millisecond);
+		}
+	}
+
+	if (m_pTimer->isTimeOverSecond(1)) {
+		//1秒経過していた場合
 
 		UpdateRealFPS();
 
 		InitCurrentFrame();
-	}
-	
-	if (IsOverOneSecond()) {
-		//既定のフレーム数に達する前に、1秒経過した場合
 
-		UpdateRealFPS();
-
-		start();
+		m_pTimer->reset();
+		m_pTimer->start();
 	}
+
 }
 
 int FPSManager::getRealFPS() const
@@ -51,50 +76,51 @@ int FPSManager::getRealFPS() const
 void FPSManager::InitCurrentFrame()
 {
 	m_currentFrame = 0;
-}
-
-long long FPSManager::GetCurrentTimeMillisecond() const
-{
-	auto currentTime = std::chrono::system_clock::now();
-	long long result = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime.time_since_epoch()).count();
-
-	return result;
-}
-
-bool FPSManager::IsOverOneSecond() const
-{
-	//経過時間を計算
-	long long dt = GetCurrentTimeMillisecond() - m_startTime;
-
-	//1秒経過していたらtrue
-	return dt >= 1000;
+	m_pFrameCounter->reset();
+	m_sum_dt_millisecond = 0;
 }
 
 void FPSManager::UpdateRealFPS()
 {
 	m_fps_real = m_currentFrame;
-
-	__raise updateRealFPS(getRealFPS());
 }
 
-void FPSManager::WaitMillisecond()
+long long FPSManager::GetMillisecondPerFrame(int frame) const
 {
-	long long update_startTime = m_startTime;
+	double result = 1000.0 / (double)m_fps_limit * frame;
+	return (long long)result;
+}
 
-	long long endTime_calcResult = m_startTime + 1000;
+void FPSManager::SleepMillisecond(long long xFrame_dt_millisecond)
+{
+	long long need_xFrameMillisecond = GetMillisecondPerFrame(m_pFrameCounter->getCount());
 
-	long long endTime_real = GetCurrentTimeMillisecond();
+	if (xFrame_dt_millisecond < need_xFrameMillisecond) {
 
-	if (endTime_real < endTime_calcResult) {
+		long long dt_sleep_millisecond = need_xFrameMillisecond - xFrame_dt_millisecond;
+		long long min_interrupt_millisecond = dt_sleep_millisecond;
 
-		long long dt_millisecond = endTime_calcResult - endTime_real;
-		std::this_thread::sleep_for(std::chrono::microseconds(dt_millisecond * 1000));
+		if (min_interrupt_millisecond >= 10) {
 
-		update_startTime = GetCurrentTimeMillisecond();
+			min_interrupt_millisecond = (std::min)(min_interrupt_millisecond - 1, (long long)15);
+		}
+
+		timeBeginPeriod(min_interrupt_millisecond);
+		std::this_thread::sleep_for(std::chrono::milliseconds(dt_sleep_millisecond));
+		timeEndPeriod(min_interrupt_millisecond);
 	}
-	else {
-		update_startTime = endTime_real;
-	}
+}
 
-	m_startTime = update_startTime;
+void FPSManager::CallSleepMillisecond(long long dt_millisecond)
+{
+	SleepMillisecond(dt_millisecond);
+	
+	m_pTimer->update();
+	m_pFrameCounter->reset();
+	m_sum_dt_millisecond = 0;
+}
+
+bool FPSManager::IsLimitFrameOver() const
+{
+	return m_currentFrame >= m_fps_limit;
 }

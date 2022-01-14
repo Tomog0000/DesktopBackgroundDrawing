@@ -1,38 +1,20 @@
 //必要なライブラリを読み込むVC++コンパイラへの命令
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
+#pragma comment(lib,"winmm.lib")
 
 #include <time.h>
 #include <random>
 #include <iostream>
 #include "DesktopBackgroundHandle.h"
 #include "FPSManager.h"
+#include "Timer.h"
 
-class Recv
-{
-public:
-	void endCalcFPSProc(double fps)
-	{
-		//system("cls");
-		std::cout << "FPS : " << fps << std::endl;
-	}
-
-	void hook_endCalcFPSEvent(FPSManager* pSrc)
-	{
-		__hook(&FPSManager::updateRealFPS, pSrc, &Recv::endCalcFPSProc);
-	}
-
-	void unhook_endCalcFPSEvent(FPSManager* pSrc)
-	{
-		__unhook(&FPSManager::updateRealFPS, pSrc, &Recv::endCalcFPSProc);
-	}
-};
 
 int main(int argc, char* argv[]) {
 
-	FPSManager fpsManager(60);
-	Recv recv;
-	recv.hook_endCalcFPSEvent(&fpsManager);
+	FPSManager fpsManager(60,2);
+	Timer oneSecondTimer;
 
 	std::cout << "start application" << std::endl;
 
@@ -66,7 +48,8 @@ int main(int argc, char* argv[]) {
 
 	Rectangle(dc, 0, 0, screen_width, screen_height);
 
-	fpsManager.start();
+	fpsManager.init();
+	oneSecondTimer.start();
 
 	while (true) {
 
@@ -90,21 +73,22 @@ int main(int argc, char* argv[]) {
 		curr++;
 
 		if ((curr & ((1 << 10) - 1)) == 0) {
-			// Wait a sec, so that we can appreciate the art
-
-			Sleep(5 * 100);
-
 			SelectObject(dc, bg_brush);
 			SelectObject(dc, bg_pen);
 			Rectangle(dc, 0, 0, screen_width, screen_height);
 		}
 		DeleteObject(pen);
+		
+		oneSecondTimer.update();
+		if (oneSecondTimer.isTimeOverSecond(1)) {
+			//system("cls");
+			std::cout << "FPS:" << fpsManager.getRealFPS() << std::endl;
+			oneSecondTimer.reset();
+			//oneSecondTimer.start();
+		}
 
 		fpsManager.update();
 	}
-
-	recv.unhook_endCalcFPSEvent(&fpsManager);
-
 	DeleteObject(bg_brush);
 	DeleteObject(bg_pen);
 
